@@ -1,11 +1,12 @@
-import { Router } from "./routes/private/router"
+import { Router } from "./routes/private/router";
+import { AuthProvider } from "./state/auth/AuthProvider";
 
 export default function App() {
 
   return (
-    <>
-      <Router/>
-    </>
-  )
+    <AuthProvider>
+      <Router />
+    </AuthProvider>
+  );
 }
 
