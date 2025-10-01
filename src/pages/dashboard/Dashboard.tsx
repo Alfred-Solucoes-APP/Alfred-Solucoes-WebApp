@@ -16,10 +16,35 @@ import {
   Label,
 } from "recharts";
 
+type PrimitiveType = "string" | "number" | "date" | "array" | "boolean";
+
+type ParamSchemaEntry = {
+  type: PrimitiveType;
+  required?: boolean;
+  description?: string;
+  enum?: (string | number | boolean)[];
+  minimum?: number;
+  maximum?: number;
+  items?: {
+    type: PrimitiveType;
+    enum?: (string | number | boolean)[];
+    minimum?: number;
+    maximum?: number;
+  };
+  default?: unknown;
+};
+
+type ParamSchema = Record<string, ParamSchemaEntry>;
+
 type GraphicsConfig = {
   id: number;
   type: string;
-  config: Record<string, unknown>;
+  slug: string;
+  title: string | null;
+  description: string | null;
+  param_schema: ParamSchema | null;
+  default_params: Record<string, unknown> | null;
+  result_shape: Record<string, unknown> | null;
 };
 
 type DatasetDatum = Record<string, string | number | null>;
@@ -29,6 +54,8 @@ type FetchPayload = {
   company_name: string;
   graphics: GraphicsConfig[];
   datasets: Record<number | string, Record<string, unknown>[]>;
+  debug?: Record<number | string, unknown>;
+  errors?: Record<string, unknown>;
 };
 
 type GraphViewConfig = {
@@ -215,8 +242,8 @@ export default function DashboardPage() {
 				(data.datasets ?? {}) as Record<number | string, Record<string, unknown>[]>,
 			);
       console.log("fetchUserData normalized datasets", normalizedDatasets);
-      console.log("fetchUserData global debug", (data as Record<string, unknown>).globalDebug);
-      console.log("fetchUserData per-graph debug", data.debug);
+    console.log("fetchUserData per-graph debug", data.debug);
+    console.log("fetchUserData errors", data.errors);
 			setDatasets(normalizedDatasets);
 
 			const firstGraphId = data.graphics?.[0]?.id ?? null;
@@ -277,6 +304,41 @@ export default function DashboardPage() {
     selectedGraphId !== null ? graphics.find((graph) => graph.id === selectedGraphId) ?? null : null;
   const chartData = selectedGraphId !== null ? datasets[selectedGraphId] ?? [] : [];
   const chartConfig = selectedGraph ? getGraphViewConfig(selectedGraph, chartData) : null;
+
+  const graphTitle = selectedGraph?.title && selectedGraph.title.trim().length > 0
+    ? selectedGraph.title.trim()
+    : selectedGraph
+    ? formatGraphName(selectedGraph.type)
+    : "";
+
+  const badgeSource = selectedGraph?.slug && selectedGraph.slug.trim().length > 0
+    ? selectedGraph.slug
+    : selectedGraph
+    ? selectedGraph.type
+    : "";
+
+  const graphBadgeLabel = badgeSource ? formatGraphName(badgeSource) : "";
+  const showGraphBadge = graphBadgeLabel !== "" && graphTitle !== "" && graphBadgeLabel.toLowerCase() !== graphTitle.toLowerCase();
+
+  const chartYAxisDomain = chartConfig
+    ? (() => {
+        const values = chartData
+          .map((row) => row[chartConfig.yKey])
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+        if (values.length === 0) {
+          return [0, 1] as [number, number];
+        }
+
+        const maxValue = Math.max(...values);
+        if (maxValue <= 0) {
+          return [0, 1] as [number, number];
+        }
+
+        const paddedMax = Math.ceil(maxValue * 1.15);
+        return [0, Math.max(1, paddedMax)] as [number, number];
+      })()
+    : null;
 
   return (
     <div className="dashboard">
@@ -375,8 +437,8 @@ export default function DashboardPage() {
                 {selectedGraph && chartConfig && (
                   <div className="graph-card__header">
                     <div>
-                      <span className="graph-type-badge">{formatGraphName(selectedGraph.type)}</span>
-                      <h2 className="graph-card__title">{formatGraphName(selectedGraph.type)}</h2>
+                      {showGraphBadge && <span className="graph-type-badge">{graphBadgeLabel}</span>}
+                      <h2 className="graph-card__title">{graphTitle}</h2>
                     </div>
                   </div>
                 )}
@@ -388,7 +450,7 @@ export default function DashboardPage() {
 
                   {!loading && !error && selectedGraph && chartConfig && chartData.length > 0 && (
                     <div className="graph-card__chart">
-                      <ResponsiveContainer width="100%" height={360}>
+                      <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData} margin={{ top: 20, right: 24, left: 12, bottom: 24 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.25)" />
                           <XAxis
@@ -406,6 +468,7 @@ export default function DashboardPage() {
                           <YAxis
                             tick={{ fill: "#cbd5f5", fontSize: 12 }}
                             allowDecimals={false}
+                            domain={chartYAxisDomain ?? undefined}
                             tickFormatter={(value) =>
                               typeof value === "number"
                                 ? value.toLocaleString("pt-BR")

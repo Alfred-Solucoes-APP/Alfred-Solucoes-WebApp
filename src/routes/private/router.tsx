@@ -7,8 +7,8 @@ import UserProfile from '../../pages/user-profile/UserProfile';
 import ChangePasswordPage from '../../pages/change-password-page/ChangePasswordPage';
 import ForgotPasswordPage from '../../pages/forgot-password-page/ForgotPasswordPage';
 import ResetPasswordPage from '../../pages/reset-password-page/ResetPasswordPage';
-import ProtectedRoute from './ProtectedRoute';
-import PublicOnlyRoute from './PublicOnlyRoute';
+import ProtectedRoute from '../guards/ProtectedRoute';
+import PublicOnlyRoute from '../guards/PublicOnlyRoute';
 
 export function Router() {
   return (

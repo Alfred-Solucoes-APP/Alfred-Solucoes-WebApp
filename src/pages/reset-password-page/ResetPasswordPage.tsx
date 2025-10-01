@@ -1,11 +1,17 @@
-import { FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import "../../assets/styles/change-password.css";
 import { supabase } from "../../supabaseClient";
 
 type ResetFormState = {
 	newPassword: string;
 	confirmNewPassword: string;
+};
+
+type PasswordVisibility = {
+	newPassword: boolean;
+	confirmNewPassword: boolean;
 };
 
 const INITIAL_FORM: ResetFormState = {
@@ -19,6 +25,28 @@ export default function ResetPasswordPage() {
 	const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
 	const [errorMessage, setErrorMessage] = useState("");
 	const [submitting, setSubmitting] = useState(false);
+	const [mostrarSenha, setMostrarSenha] = useState<PasswordVisibility>({
+		newPassword: false,
+		confirmNewPassword: false,
+	});
+
+	const toggleMostrarSenha = (field: keyof PasswordVisibility) => {
+		setMostrarSenha((prev) => ({ ...prev, [field]: !prev[field] }));
+	};
+
+	function handleNavigateToDashboard() {
+		if (status === "ready") {
+			const confirmed = window.confirm(
+				"Tem certeza de que deseja sair sem redefinir a sua senha?\n\n" +
+					"Se continuar, sua senha atual será mantida e você seguirá para o dashboard."
+			);
+			if (!confirmed) {
+				return;
+			}
+		}
+
+		navigate("/login");
+	}
 
 	useEffect(() => {
 		async function prepareSession() {
@@ -146,9 +174,9 @@ export default function ResetPasswordPage() {
 	return (
 		<div className="change-password-page">
 			<header className="change-password-header">
-				<button type="button" className="change-password-back" onClick={() => navigate("/login")}
+				<button type="button" className="change-password-back" onClick={handleNavigateToDashboard}
 				>
-					Voltar para o login
+					Ir para o dashboard
 				</button>
 			</header>
 			<main className="change-password-main">
@@ -159,23 +187,55 @@ export default function ResetPasswordPage() {
 					<form className="change-password-form" onSubmit={handleSubmit}>
 						<label>
 							Nova senha
-							<input
-								type="password"
-								name="newPassword"
-								value={form.newPassword}
-								onInput={handleChange}
-								autoComplete="new-password"
-							/>
+							<div className="password-input-wrapper">
+								<input
+									type={mostrarSenha.newPassword ? "text" : "password"}
+									name="newPassword"
+									value={form.newPassword}
+									onInput={handleChange}
+									className="password-field"
+									autoComplete="new-password"
+								/>
+								<button
+									type="button"
+									className="password-toggle-button"
+									onClick={() => toggleMostrarSenha("newPassword")}
+									aria-label={mostrarSenha.newPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
+									title={mostrarSenha.newPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
+								>
+									{mostrarSenha.newPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+								</button>
+							</div>
 						</label>
 						<label>
 							Confirmar nova senha
-							<input
-								type="password"
-								name="confirmNewPassword"
-								value={form.confirmNewPassword}
-								onInput={handleChange}
-								autoComplete="new-password"
-							/>
+							<div className="password-input-wrapper">
+								<input
+									type={mostrarSenha.confirmNewPassword ? "text" : "password"}
+									name="confirmNewPassword"
+									value={form.confirmNewPassword}
+									onInput={handleChange}
+									className="password-field"
+									autoComplete="new-password"
+								/>
+								<button
+									type="button"
+									className="password-toggle-button"
+									onClick={() => toggleMostrarSenha("confirmNewPassword")}
+									aria-label={
+										mostrarSenha.confirmNewPassword
+											? "Ocultar confirmação de senha"
+											: "Mostrar confirmação de senha"
+									}
+									title={
+										mostrarSenha.confirmNewPassword
+											? "Ocultar confirmação de senha"
+											: "Mostrar confirmação de senha"
+									}
+								>
+									{mostrarSenha.confirmNewPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+								</button>
+							</div>
 						</label>
 
 						{errorMessage && <div className="change-password-error">{errorMessage}</div>}

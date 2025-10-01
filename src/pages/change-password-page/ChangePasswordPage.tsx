@@ -1,5 +1,7 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import "../../assets/styles/change-password.css";
 import { supabase } from "../../supabaseClient";
 import { useAuth } from "../../state/auth/context";
@@ -8,6 +10,12 @@ type PasswordFormState = {
 	currentPassword: string;
 	newPassword: string;
 	confirmNewPassword: string;
+};
+
+type PasswordVisibility = {
+	currentPassword: boolean;
+	newPassword: boolean;
+	confirmNewPassword: boolean;
 };
 
 const INITIAL_FORM: PasswordFormState = {
@@ -22,10 +30,19 @@ export default function ChangePasswordPage() {
 	const [form, setForm] = useState<PasswordFormState>(INITIAL_FORM);
 	const [submitting, setSubmitting] = useState(false);
 	const [errorMessage, setErrorMessage] = useState("");
+	const [mostrarSenha, setMostrarSenha] = useState<PasswordVisibility>({
+		currentPassword: false,
+		newPassword: false,
+		confirmNewPassword: false,
+	});
 
 	const isFormEmpty = useMemo(() => {
 		return !form.currentPassword || !form.newPassword || !form.confirmNewPassword;
 	}, [form]);
+
+	const toggleMostrarSenha = (field: keyof PasswordVisibility) => {
+		setMostrarSenha((prev) => ({ ...prev, [field]: !prev[field] }));
+	};
 
 	function handleChange(event: FormEvent<HTMLInputElement>) {
 		const { name, value } = event.currentTarget;
@@ -123,33 +140,77 @@ export default function ChangePasswordPage() {
 					<form className="change-password-form" onSubmit={handleSubmit}>
 						<label>
 							Senha atual
-							<input
-								type="password"
-								name="currentPassword"
-								value={form.currentPassword}
-								onInput={handleChange}
-								autoComplete="current-password"
-							/>
+							<div className="password-input-wrapper">
+								<input
+									type={mostrarSenha.currentPassword ? "text" : "password"}
+									name="currentPassword"
+									value={form.currentPassword}
+									onInput={handleChange}
+									className="password-field"
+									autoComplete="current-password"
+								/>
+								<button
+									type="button"
+									className="password-toggle-button"
+									onClick={() => toggleMostrarSenha("currentPassword")}
+									aria-label={mostrarSenha.currentPassword ? "Ocultar senha atual" : "Mostrar senha atual"}
+									title={mostrarSenha.currentPassword ? "Ocultar senha atual" : "Mostrar senha atual"}
+								>
+									{mostrarSenha.currentPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+								</button>
+							</div>
 						</label>
 						<label>
 							Nova senha
-							<input
-								type="password"
-								name="newPassword"
-								value={form.newPassword}
-								onInput={handleChange}
-								autoComplete="new-password"
-							/>
+							<div className="password-input-wrapper">
+								<input
+									type={mostrarSenha.newPassword ? "text" : "password"}
+									name="newPassword"
+									value={form.newPassword}
+									onInput={handleChange}
+									className="password-field"
+									autoComplete="new-password"
+								/>
+								<button
+									type="button"
+									className="password-toggle-button"
+									onClick={() => toggleMostrarSenha("newPassword")}
+									aria-label={mostrarSenha.newPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
+									title={mostrarSenha.newPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
+								>
+									{mostrarSenha.newPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+								</button>
+							</div>
 						</label>
 						<label>
 							Confirmar nova senha
-							<input
-								type="password"
-								name="confirmNewPassword"
-								value={form.confirmNewPassword}
-								onInput={handleChange}
-								autoComplete="new-password"
-							/>
+							<div className="password-input-wrapper">
+								<input
+									type={mostrarSenha.confirmNewPassword ? "text" : "password"}
+									name="confirmNewPassword"
+									value={form.confirmNewPassword}
+									onInput={handleChange}
+									className="password-field"
+									autoComplete="new-password"
+								/>
+								<button
+									type="button"
+									className="password-toggle-button"
+									onClick={() => toggleMostrarSenha("confirmNewPassword")}
+									aria-label={
+										mostrarSenha.confirmNewPassword
+											? "Ocultar confirmação de senha"
+											: "Mostrar confirmação de senha"
+									}
+									title={
+										mostrarSenha.confirmNewPassword
+											? "Ocultar confirmação de senha"
+											: "Mostrar confirmação de senha"
+									}
+								>
+									{mostrarSenha.confirmNewPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+								</button>
+							</div>
 						</label>
 
 						{errorMessage && <div className="change-password-error">{errorMessage}</div>}

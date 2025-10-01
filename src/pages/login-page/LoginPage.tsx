@@ -58,6 +58,14 @@ export default function LoginPage() {
 
   return (
     <div className="login-container text-center">
+      <button
+        type="button"
+        className="login-back-button"
+        onClick={() => navigate("/")}
+        aria-label="Voltar para a página inicial"
+      >
+        Voltar para a página inicial
+      </button>
       <h1>Login</h1>
       <form onSubmit={handleLogin}>
         <input
@@ -67,14 +75,14 @@ export default function LoginPage() {
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <div style={{ position: "relative", width: "100%" }}>
+        <div className="password-input-wrapper">
           <input
             type={mostrarSenha ? "text" : "password"}
             placeholder="Senha"
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
             required
-            style={{ paddingRight: "2.5rem" }}
+            className="password-field"
             autoComplete="current-password"
           />
           <button
@@ -82,20 +90,7 @@ export default function LoginPage() {
             onClick={toggleMostrarSenha}
             aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
             title={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
-            style={{
-              position: "absolute",
-              top: "50%",
-              right: "0.75rem",
-              transform: "translateY(-50%)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: "0.25rem",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#4b5563",
-            }}
+            className="password-toggle-button"
           >
             {mostrarSenha ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
           </button>

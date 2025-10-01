@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { AdminHeader } from "../../components/layout/AdminHeader";
@@ -25,6 +25,68 @@ const initialFormState: RegisterUserPayload = {
 	company_name: "",
 };
 
+type DbCompanyOption = {
+	id_user: string;
+	company_name: string | null;
+	db_name: string;
+};
+
+type GraphFormState = {
+	slug: string;
+	title: string;
+	description: string;
+	query_template: string;
+	param_schema: string;
+	default_params: string;
+	result_shape: string;
+	allowed_roles: string;
+	is_active: boolean;
+};
+
+const initialGraphFormState: GraphFormState = {
+	slug: "",
+	title: "",
+	description: "",
+	query_template: "",
+	param_schema: "",
+	default_params: "",
+	result_shape: "",
+	allowed_roles: "user,gestor,admin",
+	is_active: true,
+};
+
+type JsonRecord = Record<string, unknown>;
+
+function parseJsonInput(value: string, fieldLabel: string): JsonRecord | undefined {
+	const trimmed = value.trim();
+	if (trimmed.length === 0) {
+		return undefined;
+	}
+
+	try {
+		const parsed = JSON.parse(trimmed);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			return parsed as JsonRecord;
+		}
+		throw new Error("O JSON deve representar um objeto");
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`Erro ao interpretar ${fieldLabel}: ${message}`);
+	}
+}
+
+function parseAllowedRolesInput(value: string): string[] | undefined {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return undefined;
+	}
+	const roles = trimmed
+		.split(",")
+		.map((role) => role.trim())
+		.filter((role) => role.length > 0);
+	return roles.length > 0 ? roles : undefined;
+}
+
 export default function AdminPage() {
 	const { user } = useAuth();
 	const [form, setForm] = useState<RegisterUserPayload>(initialFormState);
@@ -32,6 +94,14 @@ export default function AdminPage() {
 	const [successMessage, setSuccessMessage] = useState("");
 	const [errorMessage, setErrorMessage] = useState("");
 	const [logoutLoading, setLogoutLoading] = useState(false);
+	const [companies, setCompanies] = useState<DbCompanyOption[]>([]);
+	const [selectedCompanyId, setSelectedCompanyId] = useState("");
+	const [companiesLoading, setCompaniesLoading] = useState(true);
+	const [companiesError, setCompaniesError] = useState("");
+	const [graphForm, setGraphForm] = useState<GraphFormState>(initialGraphFormState);
+	const [graphSubmitting, setGraphSubmitting] = useState(false);
+	const [graphSuccessMessage, setGraphSuccessMessage] = useState("");
+	const [graphErrorMessage, setGraphErrorMessage] = useState("");
 	const navigate = useNavigate();
 
 	const isFormValid = useMemo(() => {
@@ -41,7 +111,8 @@ export default function AdminPage() {
 			!!form.db_host.trim() &&
 			!!form.db_name.trim() &&
 			!!form.db_user.trim() &&
-			!!form.db_password.trim()
+			!!form.db_password.trim() &&
+			!!form.company_name.trim()
 		);
 	}, [form]);
 
@@ -51,6 +122,146 @@ export default function AdminPage() {
 			...prev,
 			[name]: value,
 		}));
+	}
+
+	useEffect(() => {
+		let isMounted = true;
+		async function loadCompanies() {
+			setCompaniesLoading(true);
+			setCompaniesError("");
+			try {
+				const { data, error } = await supabase.functions.invoke<{
+					companies?: DbCompanyOption[];
+					error?: string;
+				}>("listCompanies");
+
+				if (!isMounted) {
+					return;
+				}
+
+				if (error) {
+					setCompaniesError(error.message ?? "Não foi possível carregar os clientes.");
+					setCompanies([]);
+					return;
+				}
+
+				const payload = data ?? {};
+				if (payload?.error) {
+					setCompaniesError(payload.error);
+					setCompanies([]);
+					return;
+				}
+
+				const companiesData = Array.isArray(payload?.companies) ? payload.companies : [];
+				setCompanies(companiesData);
+				setSelectedCompanyId((prev) =>
+					prev && companiesData.some((company) => company.id_user === prev) ? prev : ""
+				);
+			} catch (loadError) {
+				if (isMounted) {
+					const message = loadError instanceof Error ? loadError.message : String(loadError);
+					setCompaniesError(message);
+				}
+			} finally {
+				if (isMounted) {
+					setCompaniesLoading(false);
+				}
+			}
+		}
+
+		loadCompanies();
+		return () => {
+			isMounted = false;
+		};
+	}, []);
+
+	function handleCompanySelect(event: ChangeEvent<HTMLSelectElement>) {
+		setSelectedCompanyId(event.target.value);
+		setGraphErrorMessage("");
+		setGraphSuccessMessage("");
+	}
+
+	function handleGraphChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+		const { name, value, type } = event.target;
+		const inputValue = type === "checkbox" && event.target instanceof HTMLInputElement ? event.target.checked : value;
+		setGraphForm((prev) => ({
+			...prev,
+			[name]: inputValue,
+		}));
+	}
+
+	async function handleGraphSubmit(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		setGraphErrorMessage("");
+		setGraphSuccessMessage("");
+
+		if (!selectedCompanyId) {
+			setGraphErrorMessage("Selecione uma empresa antes de cadastrar o gráfico.");
+			return;
+		}
+
+		if (!graphForm.slug.trim()) {
+			setGraphErrorMessage("Informe um slug para o gráfico.");
+			return;
+		}
+
+		if (!graphForm.query_template.trim()) {
+			setGraphErrorMessage("Informe a query template do gráfico.");
+			return;
+		}
+
+		let parsedParamSchema: JsonRecord | undefined;
+		let parsedDefaultParams: JsonRecord | undefined;
+		let parsedResultShape: JsonRecord | undefined;
+
+		try {
+			parsedParamSchema = parseJsonInput(graphForm.param_schema, "schema de parâmetros");
+			parsedDefaultParams = parseJsonInput(graphForm.default_params, "parâmetros padrão");
+			parsedResultShape = parseJsonInput(graphForm.result_shape, "estrutura de resultado");
+		} catch (jsonError) {
+			const message = jsonError instanceof Error ? jsonError.message : String(jsonError);
+			setGraphErrorMessage(message);
+			return;
+		}
+
+		const allowedRoles = parseAllowedRolesInput(graphForm.allowed_roles);
+
+		setGraphSubmitting(true);
+		try {
+			const { data, error } = await supabase.functions.invoke("manageGraph", {
+				body: {
+					company_id: selectedCompanyId,
+					slug: graphForm.slug.trim(),
+					title: graphForm.title.trim() || null,
+					description: graphForm.description.trim() || null,
+					query_template: graphForm.query_template,
+					param_schema: parsedParamSchema,
+					default_params: parsedDefaultParams,
+					result_shape: parsedResultShape,
+					allowed_roles: allowedRoles,
+					is_active: graphForm.is_active,
+				},
+			});
+
+			if (error) {
+				setGraphErrorMessage(error.message ?? "Não foi possível salvar o gráfico.");
+				return;
+			}
+
+			const response = (data ?? {}) as { message?: string; error?: string };
+			if (response.error) {
+				setGraphErrorMessage(response.error);
+				return;
+			}
+
+			setGraphSuccessMessage(response.message ?? "Gráfico cadastrado com sucesso.");
+			setGraphForm(initialGraphFormState);
+		} catch (submitError) {
+			const message = submitError instanceof Error ? submitError.message : String(submitError);
+			setGraphErrorMessage(message);
+		} finally {
+			setGraphSubmitting(false);
+		}
 	}
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -68,7 +279,7 @@ export default function AdminPage() {
 			const { data, error } = await supabase.functions.invoke("registerUser", {
 				body: {
 					...form,
-					company_name: form.company_name.trim() || null,
+					company_name: form.company_name.trim(),
 				},
 			});
 
@@ -158,8 +369,8 @@ export default function AdminPage() {
 						</label>
 
 						<label className="span-full">
-							Nome da empresa (opcional)
-							<input type="text" name="company_name" value={form.company_name} onChange={handleChange} />
+							Nome da empresa*
+							<input type="text" name="company_name" value={form.company_name} onChange={handleChange} required />
 						</label>
 					</div>
 
@@ -170,6 +381,130 @@ export default function AdminPage() {
 						{submitting ? "Registrando..." : "Registrar usuário"}
 					</button>
 				</form>
+
+				<section className="admin-graphs">
+					<h2>Cadastrar gráfico para empresa</h2>
+					<p>Selecione uma empresa para inserir um novo gráfico na tabela <code>graficos</code> do banco dedicado.</p>
+
+					<form className="admin-form" onSubmit={handleGraphSubmit}>
+							<div className="form-grid">
+								<label className="span-full">
+									Empresa*
+									<select value={selectedCompanyId} onChange={handleCompanySelect} required disabled={companiesLoading}>
+										<option value="">Selecione a empresa</option>
+										{companies.map((company) => (
+											<option key={company.id_user} value={company.id_user}>
+												{company.company_name ?? company.db_name}
+											</option>
+										))}
+									</select>
+								</label>
+
+								<label>
+									Slug*
+									<input name="slug" value={graphForm.slug} onChange={handleGraphChange} required placeholder="ex.: quartos_mais_reservados" />
+								</label>
+
+								<label>
+									Título
+									<input name="title" value={graphForm.title} onChange={handleGraphChange} placeholder="Nome amigável do gráfico" />
+								</label>
+
+								<label className="span-full">
+									Descrição
+									<textarea
+										name="description"
+										value={graphForm.description}
+										onChange={handleGraphChange}
+										rows={3}
+										placeholder="Resumo exibido para o time interno"
+									/>
+								</label>
+
+								<label className="span-full">
+									Query template*
+									<textarea
+										name="query_template"
+										value={graphForm.query_template}
+										onChange={handleGraphChange}
+										rows={8}
+										placeholder="SELECT ... WHERE data_checkin BETWEEN {{data_inicio}} AND {{data_fim}}"
+										required
+									/>
+								</label>
+
+								<label className="span-full">
+									Schema de parâmetros (JSON)
+									<textarea
+										name="param_schema"
+										value={graphForm.param_schema}
+										onChange={handleGraphChange}
+										rows={6}
+										placeholder='{"data_inicio": {"type": "date", "required": true}}'
+									/>
+								</label>
+
+								<label className="span-full">
+									Parâmetros padrão (JSON)
+									<textarea
+										name="default_params"
+										value={graphForm.default_params}
+										onChange={handleGraphChange}
+										rows={4}
+										placeholder='{"limite": 5}'
+									/>
+								</label>
+
+								<label className="span-full">
+									Estrutura esperada (JSON)
+									<textarea
+										name="result_shape"
+										value={graphForm.result_shape}
+										onChange={handleGraphChange}
+										rows={4}
+										placeholder='{"fields": [{"key": "total", "label": "Total"}]}'
+									/>
+								</label>
+
+								<label>
+									Roles permitidos
+									<input
+										name="allowed_roles"
+										value={graphForm.allowed_roles}
+										onChange={handleGraphChange}
+										placeholder="user,gestor,admin"
+									/>
+									<small className="form-hint">Separe por vírgula. Inclua "user" para permitir acesso geral.</small>
+								</label>
+
+								<label className="checkbox-inline">
+									<input
+										type="checkbox"
+										name="is_active"
+										checked={graphForm.is_active}
+										onChange={handleGraphChange}
+									/>
+									<span>Ativo</span>
+								</label>
+							</div>
+
+							{companiesLoading && <p className="form-hint">Carregando empresas...</p>}
+							{companiesError && <p className="form-error">{companiesError}</p>}
+						{!companiesLoading && !companiesError && companies.length === 0 && (
+							<p className="form-hint">Nenhuma empresa cadastrada até o momento.</p>
+						)}
+							{graphErrorMessage && <p className="form-error">{graphErrorMessage}</p>}
+							{graphSuccessMessage && <p className="form-success">{graphSuccessMessage}</p>}
+
+						<button
+							type="submit"
+							className="btn-green"
+							disabled={graphSubmitting || !selectedCompanyId || companiesLoading}
+						>
+							{graphSubmitting ? "Salvando..." : "Criar gráfico"}
+						</button>
+					</form>
+				</section>
 			</main>
 		</div>
 	);
