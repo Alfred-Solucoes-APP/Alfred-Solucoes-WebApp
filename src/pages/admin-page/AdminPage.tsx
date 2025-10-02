@@ -384,7 +384,7 @@ export default function AdminPage() {
 
 				<section className="admin-graphs">
 					<h2>Cadastrar gráfico para empresa</h2>
-					<p>Selecione uma empresa para inserir um novo gráfico na tabela <code>graficos</code> do banco dedicado.</p>
+					<p>Selecione uma empresa para inserir um novo gráfico na tabela <code>graficos_dashboard</code> do banco dedicado.</p>
 
 					<form className="admin-form" onSubmit={handleGraphSubmit}>
 							<div className="form-grid">
