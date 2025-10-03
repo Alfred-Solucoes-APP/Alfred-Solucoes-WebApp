@@ -1,5 +1,5 @@
 import { Router } from "./routes/private/router";
-import { AuthProvider } from "./state/auth/AuthProvider";
+import { AuthProvider } from "./shared/state/auth/AuthProvider";
 
 export default function App() {
 
