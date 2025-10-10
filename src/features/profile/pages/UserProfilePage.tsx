@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
 import { useAuth } from "../../../shared/state/auth/context";
 
 type FetchUserDataResponse = {
@@ -39,7 +40,7 @@ export function UserProfilePage() {
 			setProfileLoading(true);
 			setErrorMessage("");
 			try {
-				const { data, error } = await supabase.functions.invoke<FetchUserDataResponse>("fetchUserData");
+				const { data, error } = await invokeFunction<FetchUserDataResponse>("fetchUserData");
 				if (error) {
 					throw new Error(error.message ?? "Não foi possível carregar os dados do perfil.");
 				}

@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { SubmitHandler } from "react-hook-form";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
-import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
+import { formatRateLimitError, toRateLimitError } from "../../../shared/utils/errors";
 import {
 	ARRAY_ITEM_TYPE_OPTIONS,
 	DEFAULT_ALLOWED_ROLES,
@@ -140,7 +141,7 @@ export function GraphForm({ companies, selectedCompanyId, onSelectCompany, loadi
 			const trimmedTitle = values.title?.trim();
 			const trimmedDescription = values.description?.trim();
 
-			const { data, error: supabaseError } = await supabase.functions.invoke("manageGraph", {
+			const { data, error: supabaseError } = await invokeFunction("manageGraph", {
 				body: {
 					company_id: values.companyId,
 					slug: trimmedSlug,
@@ -156,6 +157,11 @@ export function GraphForm({ companies, selectedCompanyId, onSelectCompany, loadi
 			});
 
 			if (supabaseError) {
+				const rateLimitError = await toRateLimitError(supabaseError);
+				if (rateLimitError) {
+					setServerError(formatRateLimitError(rateLimitError, "Muitas requisições ao criar gráficos."));
+					return;
+				}
 				setServerError(supabaseError.message ?? "Não foi possível salvar o gráfico.");
 				return;
 			}

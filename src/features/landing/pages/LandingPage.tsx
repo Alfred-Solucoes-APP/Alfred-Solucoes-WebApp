@@ -32,6 +32,12 @@ export function LandingPage() {
           >
             Entrar
           </button>
+          <button
+            className="btn-blue rounded-full shadow-md"
+            onClick={() => navigate("/demo")}
+          >
+            Ver demonstração
+          </button>
         </div>
       </section>
 
@@ -51,6 +57,18 @@ export function LandingPage() {
             <p>Texto placeholder para descrição.</p>
           </div>
           <div className="feature-placeholder">[Imagem Placeholder]</div>
+        </div>
+        <div className="demo-callout">
+          <div className="demo-callout__content">
+            <h3>Teste o painel completo</h3>
+            <p>Explore gráficos e tabelas fictícias para conhecer a experiência antes de contratar.</p>
+          </div>
+          <button
+            className="btn-white rounded-full shadow-md demo-callout__button"
+            onClick={() => navigate("/demo")}
+          >
+            Abrir demonstração
+          </button>
         </div>
       </section>
 

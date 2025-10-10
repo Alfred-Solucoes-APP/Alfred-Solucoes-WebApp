@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Label, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
 import { toggleCustomerPaused } from "../../../shared/api/tables";
+import { formatRateLimitError, RateLimitError, toRateLimitError } from "../../../shared/utils/errors";
 import "../../../shared/assets/styles/dashboard.css";
+import {
+  filterAndSortRows,
+  formatTableCellValue,
+  parseBooleanValue,
+} from "../utils/tableFilters";
+import type { TableSortDirection, TableStatusFilter } from "../utils/tableFilters";
 
-type PrimitiveType = "string" | "number" | "date" | "array" | "boolean";
+export type PrimitiveType = "string" | "number" | "date" | "array" | "boolean";
 
-type ParamSchemaEntry = {
+export type ParamSchemaEntry = {
   type: PrimitiveType;
   required?: boolean;
   description?: string;
@@ -23,9 +31,9 @@ type ParamSchemaEntry = {
   default?: unknown;
 };
 
-type ParamSchema = Record<string, ParamSchemaEntry>;
+export type ParamSchema = Record<string, ParamSchemaEntry>;
 
-type GraphicsConfig = {
+export type GraphicsConfig = {
   id: number;
   type: string;
   slug: string;
@@ -36,10 +44,10 @@ type GraphicsConfig = {
   result_shape: Record<string, unknown> | null;
 };
 
-type DatasetDatum = Record<string, string | number | boolean | null>;
+export type DatasetDatum = Record<string, string | number | boolean | null>;
 type DatasetMap = Record<number, DatasetDatum[]>;
 
-type FetchPayload = {
+export type FetchPayload = {
   company_name: string;
   graphics: GraphicsConfig[];
   datasets: Record<number | string, Record<string, unknown>[]>;
@@ -62,7 +70,7 @@ type GraphViewConfig = {
   tooltipFormatter?: (value: string | number) => string;
 };
 
-type TableColumnConfig = {
+export type TableColumnConfig = {
   key: string;
   label: string;
   type?: "string" | "number" | "date" | "boolean";
@@ -72,7 +80,7 @@ type TableColumnConfig = {
   hidden?: boolean;
 };
 
-type TableConfig = {
+export type TableConfig = {
   id: number;
   slug: string;
   title: string | null;
@@ -82,6 +90,10 @@ type TableConfig = {
   param_schema: ParamSchema | null;
   default_params: Record<string, unknown> | null;
   result_shape: Record<string, unknown> | null;
+};
+
+export type DashboardPageProps = {
+  demoPayload?: FetchPayload | null;
 };
 
 const MONTH_NAMES = [
@@ -196,6 +208,30 @@ function getGraphViewConfig(graph: GraphicsConfig, dataset: DatasetDatum[]): Gra
     };
   }
 
+  if (type === "taxa_ocupacao") {
+    return {
+      xKey: "mes",
+      yKey: "taxa",
+      xLabel: "Mês",
+      yLabel: "Taxa (%)",
+      color: "#f97316",
+      xTickFormatter: formatMonthLabel,
+      labelFormatter: (value) => formatMonthLabel(value),
+      tooltipFormatter: (value) => `${value}% de ocupação`,
+    };
+  }
+
+  if (type === "origem_reservas") {
+    return {
+      xKey: "canal",
+      yKey: "total",
+      xLabel: "Canal",
+      yLabel: "Reservas",
+      color: "#8b5cf6",
+      tooltipFormatter: (value) => `${value} reservas`,
+    };
+  }
+
   const [firstRow] = dataset;
   const keys = firstRow ? Object.keys(firstRow) : [];
   const [xKey = "categoria", yKey = "valor"] = keys;
@@ -209,7 +245,9 @@ function getGraphViewConfig(graph: GraphicsConfig, dataset: DatasetDatum[]): Gra
   };
 }
 
-export function DashboardPage() {
+export function DashboardPage(props: DashboardPageProps = {}) {
+  const { demoPayload = null } = props;
+  const isDemoMode = demoPayload !== null;
   const [companyName, setCompanyName] = useState("");
   const [graphics, setGraphics] = useState<GraphicsConfig[]>([]);
   const [datasets, setDatasets] = useState<DatasetMap>({});
@@ -225,16 +263,95 @@ export function DashboardPage() {
   const [tableErrors, setTableErrors] = useState<Record<string, unknown>>({});
   const [tableActionError, setTableActionError] = useState<string | null>(null);
   const [tableActionLoadingId, setTableActionLoadingId] = useState<string | null>(null);
+  const [tableSearchTerm, setTableSearchTerm] = useState("");
+  const [tableStatusFilter, setTableStatusFilter] = useState<TableStatusFilter>("all");
+  const [tableSortKey, setTableSortKey] = useState<string | null>(null);
+  const [tableSortDirection, setTableSortDirection] = useState<TableSortDirection>("asc");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
+  const applyPayload = useCallback((payload: FetchPayload) => {
+    setCompanyName(payload.company_name ?? "");
+    const graphicsList = Array.isArray(payload.graphics) ? payload.graphics : [];
+    setGraphics(graphicsList);
+
+    const normalizedDatasets = normalizeDatasetMap(
+      (payload.datasets ?? {}) as Record<number | string, Record<string, unknown>[]>,
+    );
+    setDatasets(normalizedDatasets);
+
+    const tablesList = Array.isArray(payload.tables) ? payload.tables : [];
+    setTables(tablesList);
+
+    const normalizedTableRows = normalizeDatasetMap(
+      (payload.tableRows ?? {}) as Record<number | string, Record<string, unknown>[]>,
+    );
+    setTableRows(normalizedTableRows);
+
+    setTableErrors(
+      payload.tableErrors && typeof payload.tableErrors === "object" && payload.tableErrors !== null
+        ? payload.tableErrors
+        : {},
+    );
+
+    setGraphErrors(
+      payload.errors && typeof payload.errors === "object" && payload.errors !== null
+        ? payload.errors
+        : {},
+    );
+
+    setGraphDebug(
+      payload.debug && typeof payload.debug === "object" && payload.debug !== null
+        ? payload.debug
+        : {},
+    );
+
+    setTableActionError(null);
+    setTableActionLoadingId(null);
+
+    const firstGraphId = graphicsList[0]?.id ?? null;
+    setSelectedGraphId(firstGraphId);
+
+    const tableIdsFromRows = Object.keys(normalizedTableRows)
+      .map((key) => Number(key))
+      .filter((key) => Number.isFinite(key));
+    const firstTableId = tablesList[0]?.id ?? tableIdsFromRows[0] ?? null;
+    setSelectedTableId(firstTableId);
+  }, []);
+
   useEffect(() => {
+    let isActive = true;
+
+    if (demoPayload) {
+      setLoading(true);
+      setError(null);
+      try {
+        applyPayload(demoPayload);
+      } catch (demoError) {
+        console.error("Erro ao carregar dados de demonstração:", demoError);
+        if (isActive) {
+          setError("Não foi possível carregar os dados da demonstração.");
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
+      return () => {
+        isActive = false;
+      };
+    }
+
     async function fetchData() {
       setLoading(true);
       setError(null);
 
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (!isActive) {
+        return;
+      }
+
       if (sessionError) {
         setError("Erro de sessão.");
         setLoading(false);
@@ -248,11 +365,18 @@ export function DashboardPage() {
       }
 
       try {
-        const { data, error: functionError } = await supabase.functions.invoke<FetchPayload>(
+        const { data, error: functionError } = await invokeFunction<FetchPayload>(
           "fetchUserData",
         );
 
         if (functionError) {
+          const rateLimitError = await toRateLimitError(functionError);
+          if (rateLimitError) {
+            throw new RateLimitError(
+              formatRateLimitError(rateLimitError, "Muitas requisições para carregar os dados."),
+              rateLimitError.retryAfterSeconds,
+            );
+          }
           throw new Error(functionError.message ?? "Erro ao carregar dados do usuário");
         }
 
@@ -261,53 +385,40 @@ export function DashboardPage() {
         }
 
         console.log("fetchUserData raw response", data);
-
-        setCompanyName(data.company_name ?? "");
-        setGraphics(Array.isArray(data.graphics) ? data.graphics : []);
         const normalizedDatasets = normalizeDatasetMap(
           (data.datasets ?? {}) as Record<number | string, Record<string, unknown>[]>,
         );
         console.log("fetchUserData normalized datasets", normalizedDatasets);
         console.log("fetchUserData per-graph debug", data.debug);
         console.log("fetchUserData errors", data.errors);
-        setDatasets(normalizedDatasets);
-        const tablesList = Array.isArray(data.tables) ? data.tables : [];
-        setTables(tablesList);
-        const normalizedTableRows = normalizeDatasetMap(
-          (data.tableRows ?? {}) as Record<number | string, Record<string, unknown>[]>,
-        );
-        setTableRows(normalizedTableRows);
-        setTableErrors(
-          data.tableErrors && typeof data.tableErrors === "object" && data.tableErrors !== null
-            ? data.tableErrors
-            : {},
-        );
-        setGraphErrors(
-          data.errors && typeof data.errors === "object" && data.errors !== null ? data.errors : {},
-        );
-        setGraphDebug(
-          data.debug && typeof data.debug === "object" && data.debug !== null ? data.debug : {},
-        );
-        setTableActionError(null);
-
-        const firstGraphId = data.graphics?.[0]?.id ?? null;
-        console.log("fetchUserData firstGraphId", firstGraphId);
-        setSelectedGraphId(firstGraphId);
-        const tableIdsFromRows = Object.keys(normalizedTableRows)
-          .map((key) => Number(key))
-          .filter((key) => Number.isFinite(key));
-        const firstTableId = tablesList[0]?.id ?? tableIdsFromRows[0] ?? null;
-        setSelectedTableId(firstTableId);
+        applyPayload({
+          ...data,
+          datasets: data.datasets ?? {},
+          tableRows: data.tableRows ?? {},
+          tables: data.tables ?? [],
+        });
       } catch (fetchError) {
         console.error("fetchData error:", fetchError);
-        setError("Não foi possível carregar os dados dos gráficos.");
+        if (isActive) {
+          if (fetchError instanceof RateLimitError) {
+            setError(fetchError.message);
+          } else {
+            setError("Não foi possível carregar os dados dos gráficos.");
+          }
+        }
       } finally {
-        setLoading(false);
+        if (isActive) {
+          setLoading(false);
+        }
       }
     }
 
     fetchData();
-  }, []);
+
+    return () => {
+      isActive = false;
+    };
+  }, [applyPayload, demoPayload]);
 
   useEffect(() => {
     if (!dropdownOpen) {
@@ -391,15 +502,6 @@ export function DashboardPage() {
     ? formatGraphName(selectedGraph.type)
     : "";
 
-  const badgeSource = selectedGraph?.slug && selectedGraph.slug.trim().length > 0
-    ? selectedGraph.slug
-    : selectedGraph
-    ? selectedGraph.type
-    : "";
-
-  const graphBadgeLabel = badgeSource ? formatGraphName(badgeSource) : "";
-  const showGraphBadge = graphBadgeLabel !== "" && graphTitle !== "" && graphBadgeLabel.toLowerCase() !== graphTitle.toLowerCase();
-
   const chartYAxisDomain = chartConfig
     ? (() => {
         const values = chartData
@@ -422,10 +524,92 @@ export function DashboardPage() {
 
   const selectedTable =
     selectedTableId !== null ? tables.find((table) => table.id === selectedTableId) ?? null : null;
-  const currentTableRows = selectedTableId !== null ? tableRows[selectedTableId] ?? [] : [];
-  const visibleTableColumns = selectedTable
-    ? selectedTable.columns.filter((column) => !column.hidden)
-    : [];
+  const currentTableRows = useMemo(
+    () => (selectedTableId !== null ? tableRows[selectedTableId] ?? [] : []),
+    [selectedTableId, tableRows],
+  );
+  const visibleTableColumns = useMemo(
+    () =>
+      selectedTable
+        ? selectedTable.columns.filter(
+            (column) =>
+              !column.hidden
+              && column.key.trim().toLowerCase() !== "id",
+          )
+        : [],
+    [selectedTable],
+  );
+  const tableToggleColumn = useMemo(
+    () => visibleTableColumns.find((column) => column.is_toggle) ?? null,
+    [visibleTableColumns],
+  );
+  const toggleColumnKey = tableToggleColumn?.key ?? null;
+
+  const filteredTableRows = useMemo(
+    () =>
+      filterAndSortRows(
+        currentTableRows,
+        visibleTableColumns,
+        toggleColumnKey,
+        {
+          searchTerm: tableSearchTerm,
+          statusFilter: tableStatusFilter,
+          sortKey: tableSortKey,
+          sortDirection: tableSortDirection,
+        },
+        { parseBooleanValue, formatTableCellValue },
+      ),
+    [
+      currentTableRows,
+      visibleTableColumns,
+      toggleColumnKey,
+      tableSearchTerm,
+      tableStatusFilter,
+      tableSortKey,
+      tableSortDirection,
+    ],
+  );
+
+  const totalTableRowCount = currentTableRows.length;
+  const filteredTableRowCount = filteredTableRows.length;
+  const hasActiveTableFilters = useMemo(
+    () =>
+      tableSearchTerm.trim() !== ""
+      || tableStatusFilter !== "all"
+      || tableSortDirection !== "asc"
+      || (tableSortKey ?? null) !== toggleColumnKey,
+    [tableSearchTerm, tableStatusFilter, tableSortDirection, tableSortKey, toggleColumnKey],
+  );
+
+  useEffect(() => {
+    const defaultSortKey = toggleColumnKey ?? null;
+    setTableSearchTerm("");
+    setTableStatusFilter("all");
+    setTableSortDirection("asc");
+    setTableSortKey(defaultSortKey);
+  }, [selectedTableId, toggleColumnKey]);
+
+  const searchInputId = selectedTable ? `table-search-${selectedTable.id}` : "table-search";
+  const sortSelectId = selectedTable ? `table-sort-${selectedTable.id}` : "table-sort";
+  const statusFilterLabel =
+    tableStatusFilter === "active"
+      ? "Ativos"
+      : tableStatusFilter === "inactive"
+      ? "Desativados"
+      : "Todos";
+  const activeSortColumn =
+    tableSortKey !== null
+      ? visibleTableColumns.find((column) => column.key === tableSortKey) ?? null
+      : tableToggleColumn;
+  const hasSortApplied = (tableSortKey ?? null) !== null;
+  const sortDirectionLabel = tableSortDirection === "asc" ? "Ascendente" : "Descendente";
+
+  const handleClearTableFilters = () => {
+    setTableSearchTerm("");
+    setTableStatusFilter("all");
+    setTableSortDirection("asc");
+    setTableSortKey(toggleColumnKey);
+  };
 
   const resolveTableErrorMessage = (value: unknown): string | null => {
     if (!value) {
@@ -448,20 +632,6 @@ export function DashboardPage() {
   const metadataTableError = resolveTableErrorMessage(tableErrors?.["__metadata"]);
   const activeTableErrorMessage = selectedTable ? resolveTableErrorMessage(tableErrors?.[selectedTable.slug]) : null;
 
-  const parseBooleanValue = (value: unknown): boolean => {
-    if (typeof value === "boolean") {
-      return value;
-    }
-    if (typeof value === "number") {
-      return value !== 0;
-    }
-    if (typeof value === "string") {
-      const normalized = value.trim().toLowerCase();
-      return ["true", "1", "sim", "yes", "ativo", "ativado", "on"].includes(normalized);
-    }
-    return false;
-  };
-
   const resolveRowId = (row: DatasetDatum, primaryKey: string | null): string | null => {
     const key = primaryKey ?? "id";
     const raw = row[key] ?? (key !== "id" ? row.id : undefined);
@@ -482,67 +652,6 @@ export function DashboardPage() {
     return String(raw);
   };
 
-  const formatWhatsappNumber = (value: unknown): string => {
-    if (value === null || value === undefined) {
-      return "—";
-    }
-    const digits = String(value).replace(/\D/g, "");
-    if (digits === "") {
-      return "—";
-    }
-
-    let localDigits = digits;
-    let prefix = "";
-
-    if (localDigits.startsWith("55") && localDigits.length > 2) {
-      prefix = "+55 ";
-      localDigits = localDigits.slice(2);
-    }
-
-    if (localDigits.length > 11) {
-      localDigits = localDigits.slice(-11);
-    }
-
-    if (localDigits.length === 11) {
-      const area = localDigits.slice(0, 2);
-      const first = localDigits.slice(2, 7);
-      const second = localDigits.slice(7);
-      return `${prefix}(${area}) ${first}-${second}`.trim();
-    }
-
-    if (localDigits.length === 10) {
-      const area = localDigits.slice(0, 2);
-      const first = localDigits.slice(2, 6);
-      const second = localDigits.slice(6);
-      return `${prefix}(${area}) ${first}-${second}`.trim();
-    }
-
-    if (!prefix && digits.startsWith("55")) {
-      return `+55 ${localDigits}`;
-    }
-
-    return (prefix + localDigits).trim();
-  };
-
-  const formatTableCellValue = (value: unknown, column: TableColumnConfig): string => {
-    if (value === null || value === undefined) {
-      return "—";
-    }
-    if (column.is_toggle) {
-      return parseBooleanValue(value) ? "Desativado" : "Ativado";
-    }
-    if (column.key === "whatsapp" || column.key === "whatsapp_digits") {
-      return formatWhatsappNumber(value);
-    }
-    if (typeof value === "boolean") {
-      return value ? "Sim" : "Não";
-    }
-    if (value instanceof Date) {
-      return value.toLocaleString("pt-BR");
-    }
-    return String(value);
-  };
-
   function handleSelectTable(tableId: number) {
     setSelectedTableId(tableId);
     setTableActionError(null);
@@ -560,6 +669,7 @@ export function DashboardPage() {
 
     const primaryKey = selectedTable.primary_key ?? "id";
     const rowIdentifier = resolveRowId(row, primaryKey);
+    const toggleKey = tableToggleColumn?.key ?? "paused";
 
     if (rowIdentifier === null) {
       setTableActionError("Identificador do cliente inválido.");
@@ -567,6 +677,26 @@ export function DashboardPage() {
     }
 
     setTableActionError(null);
+
+    if (isDemoMode) {
+      const currentPaused = parseBooleanValue(row[toggleKey]);
+      const nextPaused = !currentPaused;
+
+      setTableRows((prev) => {
+        const clone = { ...prev };
+        const current = clone[selectedTable.id] ?? [];
+        clone[selectedTable.id] = current.map((entry) => {
+          const entryId = resolveRowId(entry, primaryKey);
+          if (entryId !== null && entryId === rowIdentifier) {
+            return { ...entry, [toggleKey]: nextPaused };
+          }
+          return entry;
+        });
+        return clone;
+      });
+      return;
+    }
+
     setTableActionLoadingId(rowIdentifier);
 
     try {
@@ -579,14 +709,18 @@ export function DashboardPage() {
         clone[selectedTable.id] = current.map((entry) => {
           const entryId = resolveRowId(entry, primaryKey);
           if (entryId !== null && entryId === rowIdentifier) {
-            return { ...entry, paused: nextPaused };
+            return { ...entry, [toggleKey]: nextPaused };
           }
           return entry;
         });
         return clone;
       });
     } catch (actionError) {
-      setTableActionError((actionError as Error).message ?? "Não foi possível atualizar o status.");
+      if (actionError instanceof RateLimitError) {
+        setTableActionError(actionError.message);
+      } else {
+        setTableActionError((actionError as Error).message ?? "Não foi possível atualizar o status.");
+      }
     } finally {
       setTableActionLoadingId(null);
     }
@@ -620,39 +754,51 @@ export function DashboardPage() {
           </button>
         </div>
         <div className="header-right">
-          <div
-            className={`profile-dropdown ${dropdownOpen ? "is-open" : ""}`}
-            ref={dropdownRef}
-          >
-            <button
-              type="button"
-              className="profile-dropdown__trigger"
-              onClick={toggleDropdown}
-              aria-haspopup="menu"
-              aria-expanded={dropdownOpen}
-            >
-              <span className="profile-name">{companyName || "Cliente"}</span>
-              <span className="profile-dropdown__caret" aria-hidden="true" />
+          {isDemoMode ? (
+            <button type="button" className="demo-exit-button" onClick={() => navigate("/")}>
+              Sair da demonstração
             </button>
-            <div className="dropdown-content" role="menu">
+          ) : (
+            <div
+              className={`profile-dropdown ${dropdownOpen ? "is-open" : ""}`}
+              ref={dropdownRef}
+            >
               <button
                 type="button"
-                onClick={() => handleDropdownSelect(handleLogout)}
-                role="menuitem"
+                className="profile-dropdown__trigger"
+                onClick={toggleDropdown}
+                aria-haspopup="menu"
+                aria-expanded={dropdownOpen}
               >
-                Logout
+                <span className="profile-name">{companyName || "Cliente"}</span>
+                <span className="profile-dropdown__caret" aria-hidden="true" />
               </button>
-              <button
-                type="button"
-                onClick={() => handleDropdownSelect(() => navigate("/perfil"))}
-                role="menuitem"
-              >
-                Perfil
-              </button>
+              <div className="dropdown-content" role="menu">
+                <button
+                  type="button"
+                  onClick={() => handleDropdownSelect(handleLogout)}
+                  role="menuitem"
+                >
+                  Logout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDropdownSelect(() => navigate("/perfil"))}
+                  role="menuitem"
+                >
+                  Perfil
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </header>
+
+      {isDemoMode && (
+        <div className="demo-banner" role="status">
+          <strong>Modo demonstração.</strong> Estes dados são fictícios para testar filtros e interações.
+        </div>
+      )}
 
       <main className="dashboard-main">
         {tab === "graficos" && (
@@ -689,7 +835,6 @@ export function DashboardPage() {
                 {selectedGraph && chartConfig && (
                   <div className="graph-card__header">
                     <div>
-                      {showGraphBadge && <span className="graph-type-badge">{graphBadgeLabel}</span>}
                       <h2 className="graph-card__title">{graphTitle}</h2>
                     </div>
                   </div>
@@ -838,9 +983,6 @@ export function DashboardPage() {
                 {selectedTable && (
                   <div className="table-card__header">
                     <div>
-                      {selectedTable.slug !== "clientes" && (
-                        <span className="table-type-badge">Tabela</span>
-                      )}
                       <h2 className="table-card__title">
                         {selectedTable.title?.trim() || formatGraphName(selectedTable.slug)}
                       </h2>
@@ -862,7 +1004,134 @@ export function DashboardPage() {
                     <div className="error error--inline">{tableActionError}</div>
                   )}
 
-                  {!loading && !activeTableErrorMessage && selectedTable && currentTableRows.length > 0 && (
+                  {!loading && !activeTableErrorMessage && selectedTable && (
+                    <div className="table-card__controls">
+                      <div className="table-card__control table-card__control--search">
+                        <label htmlFor={searchInputId}>Buscar</label>
+                        <input
+                          id={searchInputId}
+                          type="search"
+                          placeholder="Filtrar por qualquer coluna..."
+                          value={tableSearchTerm}
+                          onChange={(event) => setTableSearchTerm(event.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      {tableToggleColumn && (
+                        <div className="table-card__control table-card__control--status">
+                          <span className="table-card__control-label">Status</span>
+                          <div className="table-status-filter" role="group" aria-label="Filtrar por status">
+                            <button
+                              type="button"
+                              className={`table-status-filter__option ${tableStatusFilter === "all" ? "is-active" : ""}`}
+                              onClick={() => setTableStatusFilter("all")}
+                            >
+                              Todos
+                            </button>
+                            <button
+                              type="button"
+                              className={`table-status-filter__option ${tableStatusFilter === "active" ? "is-active" : ""}`}
+                              onClick={() => setTableStatusFilter("active")}
+                            >
+                              Ativos
+                            </button>
+                            <button
+                              type="button"
+                              className={`table-status-filter__option ${tableStatusFilter === "inactive" ? "is-active" : ""}`}
+                              onClick={() => setTableStatusFilter("inactive")}
+                            >
+                              Desativados
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div className="table-card__control table-card__control--sort">
+                        <label htmlFor={sortSelectId}>Ordenar por</label>
+                        <div className="table-sort">
+                          <select
+                            id={sortSelectId}
+                            value={tableSortKey ?? "__none__"}
+                            onChange={(event) => {
+                              const { value } = event.target;
+                              if (value === "__none__") {
+                                setTableSortKey(null);
+                              } else {
+                                setTableSortKey(value);
+                              }
+                            }}
+                          >
+                            {tableToggleColumn && (
+                              <option value={tableToggleColumn.key}>
+                                {(tableToggleColumn.label || formatGraphName(tableToggleColumn.key))} (ativos primeiro)
+                              </option>
+                            )}
+                            <option value="__none__">Sem ordenação</option>
+                            {visibleTableColumns
+                              .filter((column) => column.key !== tableToggleColumn?.key)
+                              .map((column) => (
+                                <option key={column.key} value={column.key}>
+                                  {column.label || formatGraphName(column.key)}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="table-sort__direction"
+                            onClick={() =>
+                              setTableSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
+                            }
+                            disabled={!hasSortApplied}
+                          >
+                            <span aria-hidden="true">{tableSortDirection === "asc" ? "↑" : "↓"}</span>
+                            <span className="sr-only">Alternar direção</span>
+                          </button>
+                        </div>
+                      </div>
+                      {hasActiveTableFilters && (
+                        <button
+                          type="button"
+                          className="table-card__control table-card__control--clear"
+                          onClick={handleClearTableFilters}
+                        >
+                          Limpar filtros
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {!loading && !activeTableErrorMessage && selectedTable && (
+                    <div className="table-card__meta">
+                      <span>
+                        <strong>{filteredTableRowCount}</strong>{" "}
+                        {filteredTableRowCount === 1 ? "registro exibido" : "registros exibidos"}
+                        {totalTableRowCount !== filteredTableRowCount ? ` de ${totalTableRowCount}` : ""}
+                      </span>
+                      {hasActiveTableFilters && (
+                        <>
+                          {tableSearchTerm.trim() !== "" && (
+                            <span>
+                              Busca por <strong>“{tableSearchTerm}”</strong>
+                            </span>
+                          )}
+                          {tableStatusFilter !== "all" && (
+                            <span>
+                              Status: <strong>{statusFilterLabel}</strong>
+                            </span>
+                          )}
+                          {hasSortApplied && activeSortColumn && (
+                            <span>
+                              Ordenado por{" "}
+                              <strong>{activeSortColumn.label || formatGraphName(activeSortColumn.key)}</strong>{" "}
+                              ({sortDirectionLabel})
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {!loading && !activeTableErrorMessage && selectedTable && filteredTableRows.length > 0 && (
                     <div className="data-table-wrapper">
                       <table className="data-table">
                         <thead>
@@ -878,7 +1147,7 @@ export function DashboardPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {currentTableRows.map((row, rowIndex) => {
+                          {filteredTableRows.map((row, rowIndex) => {
                             const primaryKey = selectedTable.primary_key ?? "id";
                             const rowIdentifier = resolveRowId(row, primaryKey);
                             const rowKey = `${selectedTable.slug}-${rowIdentifier ?? row[primaryKey] ?? row.id ?? rowIndex}`;
@@ -919,12 +1188,35 @@ export function DashboardPage() {
                     </div>
                   )}
 
-                  {!loading && !activeTableErrorMessage && selectedTable && currentTableRows.length === 0 && (
-                    <div className="table-card__empty">
-                      <strong>Sem dados por aqui…</strong>
-                      <p>Não encontramos registros para esta tabela.</p>
-                    </div>
-                  )}
+                  {!loading
+                    && !activeTableErrorMessage
+                    && selectedTable
+                    && filteredTableRows.length === 0
+                    && totalTableRowCount > 0 && (
+                      <div className="table-card__empty table-card__empty--filters">
+                        <strong>Nenhum resultado encontrado</strong>
+                        <p>Ajuste os filtros ou limpe a busca para visualizar mais registros.</p>
+                        {hasActiveTableFilters && (
+                          <button
+                            type="button"
+                            className="table-card__empty-clear"
+                            onClick={handleClearTableFilters}
+                          >
+                            Limpar filtros
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                  {!loading
+                    && !activeTableErrorMessage
+                    && selectedTable
+                    && totalTableRowCount === 0 && (
+                      <div className="table-card__empty">
+                        <strong>Sem dados por aqui…</strong>
+                        <p>Não encontramos registros para esta tabela.</p>
+                      </div>
+                    )}
 
                   {!loading && !selectedTable && (
                     <div className="table-card__empty">

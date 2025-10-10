@@ -1,0 +1,355 @@
+{
+  "company_name": "Hotel Demo",
+  "graphics": [
+    {
+      "id": 1,
+      "type": "reservas_por_mes",
+      "slug": "reservas-demo",
+      "title": "Reservas por Mês",
+      "description": "Distribuição das reservas no último ano",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    },
+    {
+      "id": 2,
+      "type": "quartos_mais_reservados",
+      "slug": "quartos-populares",
+      "title": "Quartos mais reservados",
+      "description": "Top 5 quartos que mais receberam reservas",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    },
+    {
+      "id": 3,
+      "type": "taxa_ocupacao",
+      "slug": "taxa-ocupacao",
+      "title": "Taxa de ocupação mensal",
+      "description": "Percentual médio de ocupação dos quartos",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    },
+    {
+      "id": 4,
+      "type": "origem_reservas",
+      "slug": "origem-reservas",
+      "title": "Origem das reservas",
+      "description": "Canais que mais geraram reservas no último trimestre",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    }
+  ],
+  "datasets": {
+    "1": [
+      { "mes": 1, "total": 18 },
+      { "mes": 2, "total": 22 },
+      { "mes": 3, "total": 27 },
+      { "mes": 4, "total": 31 },
+      { "mes": 5, "total": 36 },
+      { "mes": 6, "total": 40 },
+      { "mes": 7, "total": 44 },
+      { "mes": 8, "total": 39 },
+      { "mes": 9, "total": 33 },
+      { "mes": 10, "total": 29 },
+      { "mes": 11, "total": 24 },
+      { "mes": 12, "total": 20 }
+    ],
+    "2": [
+      { "numero_quarto": "101", "total_reservas": 56 },
+      { "numero_quarto": "203", "total_reservas": 49 },
+      { "numero_quarto": "305", "total_reservas": 43 },
+      { "numero_quarto": "404", "total_reservas": 39 },
+      { "numero_quarto": "508", "total_reservas": 34 }
+    ],
+    "3": [
+      { "mes": 1, "taxa": 68 },
+      { "mes": 2, "taxa": 72 },
+      { "mes": 3, "taxa": 75 },
+      { "mes": 4, "taxa": 78 },
+      { "mes": 5, "taxa": 84 },
+      { "mes": 6, "taxa": 88 },
+      { "mes": 7, "taxa": 92 },
+      { "mes": 8, "taxa": 89 },
+      { "mes": 9, "taxa": 85 },
+      { "mes": 10, "taxa": 81 },
+      { "mes": 11, "taxa": 76 },
+      { "mes": 12, "taxa": 70 }
+    ],
+    "4": [
+      { "canal": "Site próprio", "total": 180 },
+      { "canal": "Booking", "total": 140 },
+      { "canal": "Agências", "total": 95 },
+      { "canal": "WhatsApp", "total": 75 }
+    ]
+  },
+  "debug": {},
+  "errors": {},
+  "tables": [
+    {
+      "id": 10,
+      "slug": "clientes",
+      "title": "Clientes cadastrados",
+      "description": "Base fictícia de clientes para demonstração",
+      "columns": [
+        { "key": "id", "label": "ID", "type": "number", "width": "64px" },
+        { "key": "nome", "label": "Nome", "type": "string" },
+        { "key": "email", "label": "E-mail", "type": "string" },
+        { "key": "whatsapp", "label": "WhatsApp", "type": "string" },
+        { "key": "ultima_reserva", "label": "Última Reserva", "type": "date" },
+        { "key": "paused", "label": "Status", "type": "boolean", "is_toggle": true, "align": "center", "width": "140px" }
+      ],
+      "primary_key": "id",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    },
+    {
+      "id": 11,
+      "slug": "reservas",
+      "title": "Reservas recentes",
+      "description": "Reservas confirmadas nos últimos 30 dias",
+      "columns": [
+        { "key": "id", "label": "ID", "type": "number", "width": "64px" },
+        { "key": "quarto", "label": "Quarto", "type": "string" },
+        { "key": "cliente", "label": "Cliente", "type": "string" },
+        { "key": "checkin", "label": "Check-in", "type": "date" },
+        { "key": "checkout", "label": "Check-out", "type": "date" },
+        { "key": "valor", "label": "Valor", "type": "number", "align": "right" }
+      ],
+      "primary_key": "id",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    },
+    {
+      "id": 12,
+      "slug": "quartos",
+      "title": "Quartos e categorias",
+      "description": "Visão geral dos quartos disponíveis",
+      "columns": [
+        { "key": "id", "label": "ID", "type": "number", "width": "64px" },
+        { "key": "numero", "label": "Número", "type": "string" },
+        { "key": "categoria", "label": "Categoria", "type": "string" },
+        { "key": "capacidade", "label": "Capacidade", "type": "number" },
+        { "key": "diaria", "label": "Diária (R$)", "type": "number", "align": "right" },
+        { "key": "status", "label": "Status", "type": "string" }
+      ],
+      "primary_key": "id",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    },
+    {
+      "id": 13,
+      "slug": "feedbacks",
+      "title": "Feedbacks de hóspedes",
+      "description": "Avaliações recebidas nas últimas estadias",
+      "columns": [
+        { "key": "id", "label": "ID", "type": "number", "width": "64px" },
+        { "key": "cliente", "label": "Cliente", "type": "string" },
+        { "key": "nota", "label": "Nota", "type": "number", "align": "center" },
+        { "key": "comentario", "label": "Comentário", "type": "string" },
+        { "key": "data", "label": "Data", "type": "date" }
+      ],
+      "primary_key": "id",
+      "param_schema": null,
+      "default_params": null,
+      "result_shape": null
+    }
+  ],
+  "tableRows": {
+    "10": [
+      {
+        "id": 1,
+        "nome": "Ana Lima",
+        "email": "ana.lima@example.com",
+        "whatsapp": "+55 (11) 98888-1122",
+        "ultima_reserva": "2025-09-25T18:15:00Z",
+        "paused": false
+      },
+      {
+        "id": 2,
+        "nome": "Bruno Souza",
+        "email": "bruno.souza@example.com",
+        "whatsapp": "+55 (21) 97777-3344",
+        "ultima_reserva": "2025-08-18T14:00:00Z",
+        "paused": true
+      },
+      {
+        "id": 3,
+        "nome": "Camila Dias",
+        "email": "camila.dias@example.com",
+        "whatsapp": "+55 (47) 96666-5566",
+        "ultima_reserva": "2025-09-11T09:45:00Z",
+        "paused": false
+      },
+      {
+        "id": 4,
+        "nome": "Diego Martins",
+        "email": "diego.martins@example.com",
+        "whatsapp": "+55 (31) 95555-7788",
+        "ultima_reserva": "2025-07-02T16:30:00Z",
+        "paused": false
+      },
+      {
+        "id": 5,
+        "nome": "Elaine Costa",
+        "email": "elaine.costa@example.com",
+        "whatsapp": "+55 (41) 94444-8899",
+        "ultima_reserva": "2025-09-02T17:20:00Z",
+        "paused": false
+      },
+      {
+        "id": 6,
+        "nome": "Felipe Araujo",
+        "email": "felipe.araujo@example.com",
+        "whatsapp": "+55 (51) 93333-2211",
+        "ultima_reserva": "2025-06-15T12:00:00Z",
+        "paused": true
+      },
+      {
+        "id": 7,
+        "nome": "Gabriela Nunes",
+        "email": "gabriela.nunes@example.com",
+        "whatsapp": "+55 (13) 92222-3344",
+        "ultima_reserva": "2025-08-28T10:10:00Z",
+        "paused": false
+      },
+      {
+        "id": 8,
+        "nome": "Henrique Prado",
+        "email": "henrique.prado@example.com",
+        "whatsapp": "+55 (62) 91111-4455",
+        "ultima_reserva": "2025-09-20T19:45:00Z",
+        "paused": false
+      }
+    ],
+    "11": [
+      {
+        "id": 101,
+        "quarto": "101",
+        "cliente": "Ana Lima",
+        "checkin": "2025-09-26T14:00:00Z",
+        "checkout": "2025-09-29T11:00:00Z",
+        "valor": 950
+      },
+      {
+        "id": 102,
+        "quarto": "203",
+        "cliente": "Bruno Souza",
+        "checkin": "2025-09-10T12:00:00Z",
+        "checkout": "2025-09-14T10:00:00Z",
+        "valor": 880
+      },
+      {
+        "id": 103,
+        "quarto": "305",
+        "cliente": "Camila Dias",
+        "checkin": "2025-09-18T15:00:00Z",
+        "checkout": "2025-09-22T11:00:00Z",
+        "valor": 1020
+      },
+      {
+        "id": 104,
+        "quarto": "404",
+        "cliente": "Diego Martins",
+        "checkin": "2025-09-05T13:00:00Z",
+        "checkout": "2025-09-07T10:00:00Z",
+        "valor": 540
+      },
+      {
+        "id": 105,
+        "quarto": "508",
+        "cliente": "Elaine Costa",
+        "checkin": "2025-09-03T16:00:00Z",
+        "checkout": "2025-09-06T11:00:00Z",
+        "valor": 780
+      },
+      {
+        "id": 106,
+        "quarto": "212",
+        "cliente": "Gabriela Nunes",
+        "checkin": "2025-09-21T13:00:00Z",
+        "checkout": "2025-09-24T11:00:00Z",
+        "valor": 860
+      }
+    ],
+    "12": [
+      {
+        "id": 301,
+        "numero": "101",
+        "categoria": "Standard",
+        "capacidade": 2,
+        "diaria": 320,
+        "status": "Disponível"
+      },
+      {
+        "id": 302,
+        "numero": "203",
+        "categoria": "Superior",
+        "capacidade": 3,
+        "diaria": 410,
+        "status": "Ocupado"
+      },
+      {
+        "id": 303,
+        "numero": "305",
+        "categoria": "Deluxe",
+        "capacidade": 4,
+        "diaria": 540,
+        "status": "Manutenção"
+      },
+      {
+        "id": 304,
+        "numero": "404",
+        "categoria": "Standard",
+        "capacidade": 2,
+        "diaria": 310,
+        "status": "Ocupado"
+      },
+      {
+        "id": 305,
+        "numero": "508",
+        "categoria": "Suíte Master",
+        "capacidade": 2,
+        "diaria": 720,
+        "status": "Reservado"
+      }
+    ],
+    "13": [
+      {
+        "id": 401,
+        "cliente": "Ana Lima",
+        "nota": 5,
+        "comentario": "Atendimento impecável e café da manhã delicioso!",
+        "data": "2025-09-30T09:30:00Z"
+      },
+      {
+        "id": 402,
+        "cliente": "Bruno Souza",
+        "nota": 4,
+        "comentario": "Quarto confortável, mas o wi-fi poderia ser melhor.",
+        "data": "2025-09-15T18:00:00Z"
+      },
+      {
+        "id": 403,
+        "cliente": "Camila Dias",
+        "nota": 5,
+        "comentario": "Adorei a localização e o atendimento 24h.",
+        "data": "2025-09-22T13:15:00Z"
+      },
+      {
+        "id": 404,
+        "cliente": "Gabriela Nunes",
+        "nota": 4,
+        "comentario": "Restaurante muito bom, voltarei com certeza.",
+        "data": "2025-09-25T20:10:00Z"
+      }
+    ]
+  },
+  "tableDebug": {},
+  "tableErrors": {}
+}

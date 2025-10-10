@@ -2,6 +2,20 @@ import { useEffect, useState } from "react";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
+import { collectDeviceMetadata } from "../../../shared/utils/device";
+import { formatRateLimitError, toRateLimitError } from "../../../shared/utils/errors";
+
+type RegisterLoginResponse = {
+  status: "approved" | "pending";
+  requiresConfirmation: boolean;
+  device: {
+    id: string;
+    name: string | null;
+    confirmedAt: string | null;
+    lastSeenAt: string | null;
+  };
+};
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -47,6 +61,57 @@ export function LoginPage() {
       const role = (roleFromUserMetadata ?? roleFromAppMetadata) as string | undefined;
 
       const destination = role === "admin" ? "/admin" : "/dashboard";
+
+      const deviceMetadata = collectDeviceMetadata();
+      if (!deviceMetadata.deviceId) {
+        setErrorMsg("Não conseguimos identificar este dispositivo. Verifique as permissões do navegador e tente novamente.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      const { data: securityData, error: securityError } = await invokeFunction<RegisterLoginResponse>(
+        "registerLoginEvent",
+        {
+          body: {
+            deviceId: deviceMetadata.deviceId,
+            deviceName: deviceMetadata.deviceName,
+            userAgent: deviceMetadata.userAgent,
+            locale: deviceMetadata.locale,
+            timezone: deviceMetadata.timezone,
+            screen: deviceMetadata.screen,
+          },
+        },
+      );
+
+      if (securityError) {
+        const rateLimitError = await toRateLimitError(securityError);
+        if (rateLimitError) {
+          setErrorMsg(formatRateLimitError(rateLimitError, "Muitas tentativas de login em sequência."));
+        } else {
+          setErrorMsg(securityError.message ?? "Não foi possível registrar o novo login.");
+        }
+        await supabase.auth.signOut();
+        return;
+      }
+
+      if (!securityData) {
+        setErrorMsg("Resposta inesperada ao registrar o login.");
+        await supabase.auth.signOut();
+        return;
+      }
+
+      if (securityData.status !== "approved" || securityData.requiresConfirmation) {
+        navigate("/device-verification", {
+          replace: true,
+          state: {
+            nextPath: destination,
+            message: "Precisamos confirmar este dispositivo antes de liberar o acesso.",
+            deviceId: deviceMetadata.deviceId,
+          },
+        });
+        return;
+      }
+
       navigate(destination, { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro inesperado ao entrar";

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
+import { formatRateLimitError, toRateLimitError } from "../../../shared/utils/errors";
 
 const registerUserSchema = z.object({
 	email: z.string().min(1, "Informe o email corporativo.").email("Email inválido."),
@@ -46,7 +47,7 @@ export function RegisterUserForm() {
 		setSuccessMessage("");
 
 		try {
-			const { data, error } = await supabase.functions.invoke("registerUser", {
+			const { data, error } = await invokeFunction("registerUser", {
 				body: {
 					...values,
 					company_name: values.company_name.trim(),
@@ -54,6 +55,11 @@ export function RegisterUserForm() {
 			});
 
 			if (error) {
+				const rateLimitError = await toRateLimitError(error);
+				if (rateLimitError) {
+					setServerError(formatRateLimitError(rateLimitError, "Muitas requisições ao registrar usuários."));
+					return;
+				}
 				setServerError(error.message ?? "Não foi possível registrar o usuário.");
 				return;
 			}

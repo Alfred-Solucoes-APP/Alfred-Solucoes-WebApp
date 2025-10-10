@@ -1,4 +1,5 @@
-import { supabase } from "../services/supabase/client";
+import { invokeFunction } from "../services/supabase/functions";
+import { formatRateLimitError, RateLimitError, toRateLimitError } from "../utils/errors";
 
 export type ToggleCustomerPausedResponse = {
   customer_id: number | string;
@@ -6,7 +7,7 @@ export type ToggleCustomerPausedResponse = {
 };
 
 export async function toggleCustomerPaused(customerId: number | string): Promise<ToggleCustomerPausedResponse> {
-  const { data, error } = await supabase.functions.invoke<ToggleCustomerPausedResponse>(
+  const { data, error } = await invokeFunction<ToggleCustomerPausedResponse>(
     "toggleCustomerPaused",
     {
       body: JSON.stringify({ customer_id: customerId }),
@@ -14,6 +15,10 @@ export async function toggleCustomerPaused(customerId: number | string): Promise
   );
 
   if (error) {
+    const rateLimitError = await toRateLimitError(error);
+    if (rateLimitError) {
+      throw new RateLimitError(formatRateLimitError(rateLimitError, "Muitas requisições ao atualizar o status."), rateLimitError.retryAfterSeconds);
+    }
     throw new Error(error.message ?? "Não foi possível atualizar o status do cliente.");
   }
 

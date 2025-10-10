@@ -3,7 +3,8 @@ import type { SubmitHandler } from "react-hook-form";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
+import { formatRateLimitError, toRateLimitError } from "../../../shared/utils/errors";
 import {
 	ARRAY_ITEM_TYPE_OPTIONS,
 	COLUMN_ALIGN_OPTIONS,
@@ -162,7 +163,7 @@ export function TableForm({ companies, selectedCompanyId, onSelectCompany, loadi
 			const trimmedDescription = values.description?.trim();
 			const trimmedPrimaryKey = values.primaryKey?.trim();
 
-			const { data, error: supabaseError } = await supabase.functions.invoke("manageTable", {
+			const { data, error: supabaseError } = await invokeFunction("manageTable", {
 				body: {
 					company_id: values.companyId,
 					slug: trimmedSlug,
@@ -180,6 +181,11 @@ export function TableForm({ companies, selectedCompanyId, onSelectCompany, loadi
 			});
 
 			if (supabaseError) {
+				const rateLimitError = await toRateLimitError(supabaseError);
+				if (rateLimitError) {
+					setServerError(formatRateLimitError(rateLimitError, "Muitas requisições ao salvar tabelas."));
+					return;
+				}
 				setServerError(supabaseError.message ?? "Não foi possível salvar a tabela.");
 				return;
 			}

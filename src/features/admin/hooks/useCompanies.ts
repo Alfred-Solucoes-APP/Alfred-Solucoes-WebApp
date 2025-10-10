@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../../../shared/services/supabase/client";
+import { invokeFunction } from "../../../shared/services/supabase/functions";
 import type { DbCompanyOption } from "../types";
 
 interface CompaniesPayload {
@@ -16,7 +16,7 @@ export function useCompanies() {
 		setLoading(true);
 		setError("");
 		try {
-			const { data, error: invokeError } = await supabase.functions.invoke<CompaniesPayload>("listCompanies");
+			const { data, error: invokeError } = await invokeFunction<CompaniesPayload>("listCompanies");
 			if (invokeError) {
 				setError(invokeError.message ?? "Não foi possível carregar os clientes.");
 				setCompanies([]);

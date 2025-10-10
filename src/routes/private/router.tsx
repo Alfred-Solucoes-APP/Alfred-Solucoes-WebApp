@@ -5,7 +5,10 @@ import PublicOnlyRoute from '../guards/PublicOnlyRoute';
 
 const LandingPage = lazy(() => import('../../features/landing/pages/LandingPage'));
 const Dashboard = lazy(() => import('../../features/dashboard/pages/DashboardPage'));
+const DashboardDemo = lazy(() => import('../../features/dashboard/pages/DashboardDemoPage'));
 const LoginPage = lazy(() => import('../../features/auth/pages/LoginPage'));
+const DeviceVerificationPage = lazy(() => import('../../features/auth/pages/DeviceVerificationPage'));
+const ConfirmDevicePage = lazy(() => import('../../features/auth/pages/ConfirmDevicePage'));
 const AdminPage = lazy(() => import('../../features/admin/pages/AdminPage'));
 const UserProfile = lazy(() => import('../../features/profile/pages/UserProfilePage'));
 const ChangePasswordPage = lazy(() => import('../../features/auth/pages/ChangePasswordPage'));
@@ -27,6 +30,7 @@ export function Router() {
               </ProtectedRoute>
             }
           />
+          <Route path="/demo" element={<DashboardDemo />} />
           <Route
             path="/admin"
             element={
@@ -52,6 +56,14 @@ export function Router() {
             }
           />
           <Route
+            path="/device-verification"
+            element={
+              <ProtectedRoute>
+                <DeviceVerificationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/forgot-password"
             element={
               <PublicOnlyRoute>
@@ -60,6 +72,7 @@ export function Router() {
             }
           />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/confirm-device" element={<ConfirmDevicePage />} />
           <Route
             path="/login"
             element={
